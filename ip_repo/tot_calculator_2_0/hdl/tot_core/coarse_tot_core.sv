@@ -3,6 +3,7 @@ module coarse_tot_core #(
   parameter WIDTH = 32
 )(
   input  wire clk,
+  input  wire clk_timestamp,      // ~40MHz
   input  wire rst_n,
 
   input  wire [WIDTH-1:0] thr,
@@ -18,8 +19,11 @@ module coarse_tot_core #(
   output logic [11:0] fall_curr_sample,
 
   output logic [WIDTH-1:0] rise_coarse_time,
-  output logic [WIDTH-1:0] fall_coarse_time
+  output logic [WIDTH-1:0] fall_coarse_time,
+  output logic [63:0] master_timestamp_out
 );
+
+// ----- Local parameters -----
 
 
 // ----- Typedefs -----
@@ -29,7 +33,7 @@ typedef logic [SAMPLE_NUM_PER_CYCLE-1:0][11:0] adc_sample_vector_t;
 adc_sample_vector_t adc_samples_q, adc_samples_2q;
 
 logic pulse_active, pulse_active_nxt, pulse_active_q;
-logic [WIDTH-1:0] coarse_counter;
+logic [31:0] sampl_clk_ctr;
 
 logic [11:0] rise_curr_sample_nxt, rise_curr_sample_q;
 logic [11:0] rise_prev_sample_nxt, rise_prev_sample_q;
@@ -42,10 +46,13 @@ logic fall_detected_nxt, fall_detected_q;
 logic [WIDTH-1:0] rise_coarse_time_nxt, rise_coarse_time_q;
 logic [WIDTH-1:0] fall_coarse_time_nxt, fall_coarse_time_q;
 
+logic [63:0] master_timestamp_reg;
+logic        clk_timestamp_q, clk_timestamp_2q;
+
+
 always_ff @(posedge clk or negedge rst_n) begin
   if (!rst_n) begin
     pulse_active     <= 1'b0;
-    coarse_counter   <= '0;
     rise_detected    <= 1'b0;
     fall_detected    <= 1'b0;
 
@@ -85,7 +92,6 @@ always_ff @(posedge clk or negedge rst_n) begin
     fall_prev_sample_q <= fall_prev_sample_nxt;
     fall_coarse_time_q <= fall_coarse_time_nxt;
 
-    coarse_counter <= coarse_counter + 1'b1;
     adc_samples_q <= { >> { sample } };
     adc_samples_2q <= adc_samples_q;
 
@@ -131,8 +137,9 @@ always_comb begin
       rise_detected_nxt    = 1'b1;
       rise_curr_sample_nxt = current_sample;
       rise_prev_sample_nxt = previous_sample;
-      rise_coarse_time_nxt = (coarse_counter * SAMPLE_NUM_PER_CYCLE) + i;
+      rise_coarse_time_nxt = sampl_clk_ctr + i; // In sampling clk cycles
       pulse_active_nxt     = 1'b1;
+      $display("Rise found at time = %d", sampl_clk_ctr + i);// In sampling clk cycles
     end
 
     // --- Falling edge ---
@@ -140,10 +147,73 @@ always_comb begin
       fall_detected_nxt    = 1'b1;
       fall_curr_sample_nxt = current_sample;
       fall_prev_sample_nxt = previous_sample;
-      fall_coarse_time_nxt = (coarse_counter * SAMPLE_NUM_PER_CYCLE) + i;
+      fall_coarse_time_nxt = sampl_clk_ctr + i;
+      $display("Rise found at time = %d",  sampl_clk_ctr + i);
       pulse_active_nxt     = 1'b0;
     end
 
+  end
+end
+
+
+// ----- Timestamp driven by 40MHz -----
+logic [64:0] master_timestamp_40mhz, master_timestamp_40mhz_q;
+
+always_ff @(posedge clk_timestamp or negedge rst_n) begin
+  if (!rst_n) begin
+    master_timestamp_40mhz <= 64'd0;
+    master_timestamp_40mhz_q <= 64'd0;
+  end 
+  else begin
+    // We use delayed counter to avoid off-by-1 error
+    master_timestamp_40mhz <= master_timestamp_40mhz + 64'd1;
+    master_timestamp_40mhz_q <= master_timestamp_40mhz;
+  end
+end
+
+
+// ----- Cross clock -----
+// to add xdc_cdc type in tcl console: 
+// set_property XPM_LIBRARIES {XPM_CDC} [current_project]
+logic [63:0] master_timestamp_100mhz;
+
+xpm_cdc_array_single #(
+  .DEST_SYNC_FF(2),
+  .INIT_SYNC_FF(0),   
+  .SIM_ASSERT_CHK(0), 
+  .SRC_INPUT_REG(1),
+  .WIDTH(64)
+) xpm_cdc_timestamp_inst (
+  .src_clk(clk_timestamp),
+  .src_in(master_timestamp_40mhz_q),
+  .dest_clk(clk),
+  .dest_out(master_timestamp_100mhz)
+);
+
+
+// ----- Timestamp in 100MHz -----
+always_ff @(posedge clk) begin
+  if (!rst_n) begin
+    master_timestamp_out <= 64'd0;
+  end 
+  else begin
+    master_timestamp_out <= rise_detected_q ? master_timestamp_100mhz : master_timestamp_out;
+  end
+end
+
+
+
+// Count time between samples within 40MHz period
+// Note that FPGA clock frequency differs from ADC sampling frequency
+always_ff @(posedge clk) begin
+  if (!rst_n) begin
+    sampl_clk_ctr <= 16'd0;
+  end
+  else if (clk_timestamp && !clk_timestamp_q) begin
+    sampl_clk_ctr <= 16'd0;
+  end
+  else begin
+    sampl_clk_ctr <= sampl_clk_ctr + SAMPLE_NUM_PER_CYCLE;
   end
 end
 

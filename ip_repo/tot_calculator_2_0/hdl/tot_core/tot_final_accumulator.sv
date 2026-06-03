@@ -98,7 +98,6 @@ always_ff @(posedge clk) begin
       data_valid <= 1'b1;
     end
     
-
   end
 end
 

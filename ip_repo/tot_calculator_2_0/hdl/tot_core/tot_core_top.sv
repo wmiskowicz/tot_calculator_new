@@ -1,7 +1,9 @@
 module tot_core_top #(
   parameter SAMPLE_NUM_PER_CYCLE = 1,
   parameter WIDTH = 32,
-  parameter FRAC = 8
+  parameter FRAC = 8,
+  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 32'd625, // 1.6 GHz sampling clock
+  parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000 // 40 MHz timestamp clock
 )(
   input wire clk,
   input wire clk_40MHz,
@@ -28,6 +30,7 @@ wire [WIDTH-1:0] tot_out;
 
 wire [WIDTH-1:0] t_leading_edge_in;
 wire [63:0] t_leading_edge_out;
+wire [63:0] master_timestamp;
 
 // Edge detection
 
@@ -47,7 +50,9 @@ logic [11:0] fall_curr_sample;
 // Coarse timestamps
 
 logic [WIDTH-1:0] rise_coarse_time;
+logic [WIDTH-1:0] rise_time;
 logic [WIDTH-1:0] fall_coarse_time;
+logic [WIDTH-1:0] fall_time;
 
 // Fractional timestamps
 
@@ -64,12 +69,15 @@ assign tot = tot_out;
 // ============================================================
 
 coarse_tot_core #(
+  .SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
+  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
   .WIDTH(WIDTH)
 )
 u_coarse_tot_core
 (
   .clk(clk),
+  .clk_timestamp     (clk_40MHz),
   .rst_n(rst_n),
 
   .thr(thr),
@@ -86,7 +94,8 @@ u_coarse_tot_core
   .fall_curr_sample(fall_curr_sample),
 
   .rise_coarse_time(rise_coarse_time),
-  .fall_coarse_time(fall_coarse_time)
+  .fall_coarse_time(fall_coarse_time),
+  .master_timestamp_out(master_timestamp)
 );
 
 // ============================================================
@@ -103,9 +112,11 @@ u_rising_interp_exp
   .rst(!rst_n),
   .prev_sample(rise_prev_sample),
   .curr_sample(rise_curr_sample),
+  .event_time_in(rise_coarse_time),
   .sample_valid_in(rise_detected),
   .thr(thr[11:0]),
 
+  .event_time_out(rise_time),
   .sample_valid_out(raise_frac_valid),
   .frac(rise_frac)
 );
@@ -124,9 +135,11 @@ u_falling_interp_exp
   .rst(!rst_n),
   .prev_sample(fall_prev_sample),
   .curr_sample(fall_curr_sample),
+  .event_time_in(fall_coarse_time),
   .sample_valid_in(fall_detected),
   .thr(thr[11:0]),
 
+  .event_time_out(fall_time),
   .sample_valid_out(fall_frac_valid),
   .frac(fall_frac)
 );
@@ -147,8 +160,8 @@ u_tot_final_accumulator
   .rise_valid(raise_frac_valid),
   .fall_valid(fall_frac_valid),
 
-  .rise_coarse_time(rise_coarse_time),
-  .fall_coarse_time(fall_coarse_time),
+  .rise_coarse_time(rise_time),
+  .fall_coarse_time(fall_time),
 
   .rise_frac(rise_frac),
   .fall_frac(fall_frac),
@@ -165,11 +178,11 @@ output_sum #(
 )
 u_output_sum (
   .clk_data          (clk),
-  .clk_timestamp     (clk_40MHz),
   .rst_n             (rst_n),
 
   .data_valid_in     (data_valid_in),
   .data_valid_out    (data_valid_out),
+  .master_timestamp_in(master_timestamp),
   .t_leading_edge_in (t_leading_edge_in),
   .t_leading_edge_out(t_leading_edge_out), //Picosecond master timestamp
   .tot_in            (tot_in),

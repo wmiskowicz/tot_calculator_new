@@ -1,56 +1,56 @@
 module output_sum #(
-  parameter PORTS_WIDTH = 32
+  parameter PORTS_WIDTH = 32,
+  parameter FRAC = 8,
+  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 15'd625,
+  parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000
 )(
-  input wire clk_timestamp,      // ~40MHz
   input wire clk_data,
   input wire rst_n,
 
-  input logic                   data_valid_in,
-  input logic [PORTS_WIDTH-1:0] tot_in,
-  input logic [PORTS_WIDTH-1:0] t_leading_edge_in,
+  input logic                     data_valid_in,
+  input logic [PORTS_WIDTH-1:0]   tot_in,
+  input logic [PORTS_WIDTH-1:0]   t_leading_edge_in, // format: [31-FRAC:FRAC]
+  input logic [63:0]              master_timestamp_in,
 
-  output logic                   data_valid_out,
-  output logic [PORTS_WIDTH-1:0] tot_out,
-  output logic [63:0]            t_leading_edge_out // Picosecond master timestamp
+  output logic                    data_valid_out,
+  output logic [PORTS_WIDTH-1:0]  tot_out,
+  output logic [63:0]             t_leading_edge_out // Picosecond master timestamp
 );
 
+// ----- Local variables -----
 
-// ----- Local parameters -----
-localparam bit [63:0] PERIOD_40M_PS = 64'd25_000;
+logic [2:0]  vld_pipe;
+logic [PORTS_WIDTH-1:0] tot_pipe [2:0];
 
-// ----- Local veriables -----
-logic [63:0] master_timestamp;
-logic clk_timestamp_q, clk_timestamp_2q;
-
-
-// --- Timestamp ---
-always_ff @(posedge clk_data) begin
-  clk_timestamp_q <= clk_timestamp;
-  clk_timestamp_2q <= clk_timestamp_q;
-
-  if (!rst_n) begin
-    master_timestamp <= 64'd0;
-  end 
-  else if (clk_timestamp_q && !clk_timestamp_2q) begin
-    master_timestamp <= master_timestamp + PERIOD_40M_PS;
-  end
-end
+logic [63:0] t_leading_edge_q;
+logic [63:0] t_leading_edge_2q;
 
 
-// --- Output buffer ---
+
+// --- Math & Output Pipeline ---
 always_ff @(posedge clk_data) begin
   if (!rst_n) begin
-    data_valid_out      <= 1'b0;
-    tot_out             <= '0;
-    t_leading_edge_out  <= '0;
-  end 
-  else begin
-    data_valid_out <= data_valid_in;
+    vld_pipe           <= '0;
+    data_valid_out     <= 1'b0;
+    tot_out            <= '0;
+    t_leading_edge_q   <= '0;
+    t_leading_edge_2q  <= '0;
+    t_leading_edge_out <= '0;
+    for(int i=0; i<3; i++) tot_pipe[i] <= '0;
+  end else begin
+    vld_pipe    <= {vld_pipe[1:0], data_valid_in};
+    tot_pipe[0] <= tot_in;
+    tot_pipe[1] <= tot_pipe[0];
+    tot_pipe[2] <= tot_pipe[1];
 
-    if (data_valid_in) begin
-      tot_out <= tot_in;
+    t_leading_edge_q <= 64'(t_leading_edge_in * SAMPLING_CLK_PERIOD_PS);
+    t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + (64'(master_timestamp_in) * TIMESTAMP_CLK_PERIOD_PS);
 
-      t_leading_edge_out <= t_leading_edge_in + master_timestamp;
+
+    data_valid_out     <= vld_pipe[2];
+    if (vld_pipe[2]) begin
+      tot_out            <= tot_pipe[2];
+      t_leading_edge_out <= t_leading_edge_2q;
     end
   end
 end
