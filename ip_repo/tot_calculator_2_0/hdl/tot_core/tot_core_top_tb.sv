@@ -5,13 +5,13 @@ module tot_core_top_tb;
 
 // ----- Local parameters -----
 parameter SAMPLE_NUM_PER_CYCLE = 24;
-parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 16'd625; // 1.6 GHz
+parameter real SAMPLING_CLK_PERIOD_PS = 16'd416; //16'd625; // 1.6 GHz
 parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000; // 40 MHz
 parameter WIDTH = 32;
 parameter FRAC = 8;
 parameter CLK_PERIOD = 10ns;
 parameter CLK_40MHZ_PERIOD = 25;
-parameter V_MIN = -0.1;
+parameter V_MIN = 0;
 parameter V_MAX = 1.0;
 
 
@@ -31,6 +31,11 @@ wire adc_valid, adc_valid_peek;
 wire [WIDTH-1:0] tot;
 wire [63:0] t_leading_edge;
 wire data_valid;
+
+typedef logic [SAMPLE_NUM_PER_CYCLE-1:0][11:0] adc_sample_vector_t;
+adc_sample_vector_t samples_peek;
+
+assign samples_peek =  { >> { sample } };
 
 // --- DUT ---
 tot_core_top #(
@@ -138,7 +143,7 @@ u_adc_csv_streamer (
 
 adc_csv_streamer2 #(
   .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output.csv"),
-  .V_MIN   (0),
+  .V_MIN   (V_MIN),
   .V_MAX   (V_MAX),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE)
 )
@@ -153,18 +158,10 @@ u_adc_csv_streamer_fast (
 // Wait clocks
 // ============================================================
 
-task automatic wait_clk_cycles
-(
-  input int clk_num
-);
-
+task automatic wait_clk_cycles (input int clk_num);
   begin
-
-    repeat(clk_num)
-      @(posedge clk);
-
+    repeat(clk_num) @(posedge clk);
   end
-
 endtask
 
 endmodule

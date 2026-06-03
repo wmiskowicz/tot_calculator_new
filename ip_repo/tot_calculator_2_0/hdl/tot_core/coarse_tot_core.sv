@@ -33,7 +33,7 @@ typedef logic [SAMPLE_NUM_PER_CYCLE-1:0][11:0] adc_sample_vector_t;
 adc_sample_vector_t adc_samples_q, adc_samples_2q;
 
 logic pulse_active, pulse_active_nxt, pulse_active_q;
-logic [31:0] sampl_clk_ctr;
+logic [31:0] sampl_clk_ctr, sampl_clk_ctr_q;
 
 logic [11:0] rise_curr_sample_nxt, rise_curr_sample_q;
 logic [11:0] rise_prev_sample_nxt, rise_prev_sample_q;
@@ -47,7 +47,7 @@ logic [WIDTH-1:0] rise_coarse_time_nxt, rise_coarse_time_q;
 logic [WIDTH-1:0] fall_coarse_time_nxt, fall_coarse_time_q;
 
 logic [63:0] master_timestamp_reg;
-logic        clk_timestamp_q, clk_timestamp_2q;
+logic        clk_timestamp_q;
 
 
 always_ff @(posedge clk or negedge rst_n) begin
@@ -137,9 +137,9 @@ always_comb begin
       rise_detected_nxt    = 1'b1;
       rise_curr_sample_nxt = current_sample;
       rise_prev_sample_nxt = previous_sample;
-      rise_coarse_time_nxt = sampl_clk_ctr + i; // In sampling clk cycles
+      rise_coarse_time_nxt = (sampl_clk_ctr + i) - 1 - (2 * SAMPLE_NUM_PER_CYCLE); // In sampling clk cycles
       pulse_active_nxt     = 1'b1;
-      $display("Rise found at time = %d", sampl_clk_ctr + i);// In sampling clk cycles
+      $display("Rise found at i = %d, sampl_clk_ctr=%d", i, sampl_clk_ctr); // compensate input delay*
     end
 
     // --- Falling edge ---
@@ -147,13 +147,18 @@ always_comb begin
       fall_detected_nxt    = 1'b1;
       fall_curr_sample_nxt = current_sample;
       fall_prev_sample_nxt = previous_sample;
-      fall_coarse_time_nxt = sampl_clk_ctr + i;
-      $display("Rise found at time = %d",  sampl_clk_ctr + i);
+      fall_coarse_time_nxt = (sampl_clk_ctr + i) - (2 * SAMPLE_NUM_PER_CYCLE); // compensate input delay*
+      $display("Fall found at i = %d, sampl_clk_ctr=%d", i, sampl_clk_ctr);
       pulse_active_nxt     = 1'b0;
     end
 
   end
 end
+
+// *We compensate 1-clock delay at the input and off-by-1 error of sampl_clk_ctr.
+// sampl_clk_ctr start counting inmediatelly after reset but we want it to be 0 at the 1'st cycle 
+// - 1 comes from the fact that we need time of a prev_sample for computing (we will add fraction to it later)
+// alternatively one could pick curr_sample and then subtract fraction
 
 
 // ----- Timestamp driven by 40MHz -----
@@ -170,7 +175,6 @@ always_ff @(posedge clk_timestamp or negedge rst_n) begin
     master_timestamp_40mhz_q <= master_timestamp_40mhz;
   end
 end
-
 
 // ----- Cross clock -----
 // to add xdc_cdc type in tcl console: 
@@ -192,11 +196,14 @@ xpm_cdc_array_single #(
 
 
 // ----- Timestamp in 100MHz -----
+logic master_timestamp_lsb_q;
 always_ff @(posedge clk) begin
   if (!rst_n) begin
     master_timestamp_out <= 64'd0;
+    master_timestamp_lsb_q <= 1'b0;
   end 
   else begin
+    master_timestamp_lsb_q <= master_timestamp_100mhz[0];
     master_timestamp_out <= rise_detected_q ? master_timestamp_100mhz : master_timestamp_out;
   end
 end
@@ -209,7 +216,7 @@ always_ff @(posedge clk) begin
   if (!rst_n) begin
     sampl_clk_ctr <= 16'd0;
   end
-  else if (clk_timestamp && !clk_timestamp_q) begin
+  else if (master_timestamp_100mhz[0] && !master_timestamp_lsb_q) begin
     sampl_clk_ctr <= 16'd0;
   end
   else begin

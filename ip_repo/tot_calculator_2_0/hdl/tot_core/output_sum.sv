@@ -20,7 +20,7 @@ module output_sum #(
 // ----- Local variables -----
 
 logic [2:0]  vld_pipe;
-logic [PORTS_WIDTH-1:0] tot_pipe [2:0];
+logic [31:0] tot_q, tot_2q;
 
 logic [63:0] t_leading_edge_q;
 logic [63:0] t_leading_edge_2q;
@@ -36,12 +36,12 @@ always_ff @(posedge clk_data) begin
     t_leading_edge_q   <= '0;
     t_leading_edge_2q  <= '0;
     t_leading_edge_out <= '0;
-    for(int i=0; i<3; i++) tot_pipe[i] <= '0;
+    tot_q <= '0;
+    tot_2q <= '0;
   end else begin
-    vld_pipe    <= {vld_pipe[1:0], data_valid_in};
-    tot_pipe[0] <= tot_in;
-    tot_pipe[1] <= tot_pipe[0];
-    tot_pipe[2] <= tot_pipe[1];
+    vld_pipe <= {vld_pipe[1:0], data_valid_in};
+    tot_q    <= (tot_in * SAMPLING_CLK_PERIOD_PS);
+    tot_2q   <= (tot_q >> FRAC);
 
     t_leading_edge_q <= 64'(t_leading_edge_in * SAMPLING_CLK_PERIOD_PS);
     t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + (64'(master_timestamp_in) * TIMESTAMP_CLK_PERIOD_PS);
@@ -49,7 +49,7 @@ always_ff @(posedge clk_data) begin
 
     data_valid_out     <= vld_pipe[2];
     if (vld_pipe[2]) begin
-      tot_out            <= tot_pipe[2];
+      tot_out            <= tot_2q;
       t_leading_edge_out <= t_leading_edge_2q;
     end
   end
