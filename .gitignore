@@ -1,0 +1,15 @@
+/.dvt
+dvt_build.log
+
+/results
+
+/tot_calculator_final/tot_calculator_final.cache
+/tot_calculator_final/tot_calculator_final.gen
+/tot_calculator_final/tot_calculator_final.hw
+/tot_calculator_final/tot_calculator_final.runs
+/tot_calculator_final/tot_calculator_final.sim
+/tot_calculator_final/tot_calculator_final.tmp
+
+
+*.log
+*.xsa
