@@ -33,6 +33,8 @@ wire [63:0] t_leading_edge_out;
 
 logic rise_detected;
 logic fall_detected;
+logic fall_frac_valid;
+logic raise_frac_valid;
 
 // ADC samples around threshold crossing
 
@@ -91,16 +93,20 @@ u_coarse_tot_core
 // Rising edge interpolation
 // ============================================================
 
-rising_interp_exp #(
-  .FRAC(FRAC)
+interp_exp #(
+  .FRAC(FRAC),
+  .IS_FALLING(0)
 )
 u_rising_interp_exp
 (
+  .clk(clk),
+  .rst(!rst_n),
   .prev_sample(rise_prev_sample),
   .curr_sample(rise_curr_sample),
-
+  .sample_valid_in(rise_detected),
   .thr(thr[11:0]),
 
+  .sample_valid_out(raise_frac_valid),
   .frac(rise_frac)
 );
 
@@ -108,16 +114,20 @@ u_rising_interp_exp
 // Falling edge interpolation
 // ============================================================
 
-falling_interp_exp #(
-  .FRAC(FRAC)
+interp_exp #(
+  .FRAC(FRAC),
+  .IS_FALLING(1)
 )
 u_falling_interp_exp
 (
+  .clk(clk),
+  .rst(!rst_n),
   .prev_sample(fall_prev_sample),
   .curr_sample(fall_curr_sample),
-
+  .sample_valid_in(fall_detected),
   .thr(thr[11:0]),
 
+  .sample_valid_out(fall_frac_valid),
   .frac(fall_frac)
 );
 
@@ -134,8 +144,8 @@ u_tot_final_accumulator
   .clk(clk),
   .rst_n(rst_n),
 
-  .rise_valid(rise_detected),
-  .fall_valid(fall_detected),
+  .rise_valid(raise_frac_valid),
+  .fall_valid(fall_frac_valid),
 
   .rise_coarse_time(rise_coarse_time),
   .fall_coarse_time(fall_coarse_time),

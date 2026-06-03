@@ -4,7 +4,7 @@
 module tot_calculator_v1_5_S00_AXI #
 (
 
-	parameter SAMPLE_NUM_PER_CYCLE = 1,
+	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,
 	parameter FRAC = 8,
 	parameter ID = 32'h0000_CA7C,
