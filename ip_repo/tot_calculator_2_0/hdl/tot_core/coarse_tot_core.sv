@@ -147,7 +147,7 @@ always_comb begin
       fall_detected_nxt    = 1'b1;
       fall_curr_sample_nxt = current_sample;
       fall_prev_sample_nxt = previous_sample;
-      fall_coarse_time_nxt = (sampl_clk_ctr + i) - (2 * SAMPLE_NUM_PER_CYCLE); // compensate input delay*
+      fall_coarse_time_nxt = (sampl_clk_ctr + i) - 1 -(2 * SAMPLE_NUM_PER_CYCLE); // compensate input delay*
       $display("Fall found at i = %d, sampl_clk_ctr=%d", i, sampl_clk_ctr);
       pulse_active_nxt     = 1'b0;
     end
