@@ -14,7 +14,7 @@ module tot_final_accumulator #(
   input wire [FRAC-1:0] rise_frac,
   input wire [FRAC-1:0] fall_frac,
 
-  output logic [WIDTH-1:0] tot,
+  output logic [WIDTH-1:0] t_trailing_edge,
   output logic [WIDTH-1:0] t_leading_edge,
 
   output logic data_valid
@@ -69,7 +69,7 @@ end
 
 always_ff @(posedge clk) begin
   if (!rst_n) begin
-    tot <= '0;
+    t_trailing_edge <= '0;
     t_leading_edge <= '0;
     data_valid <= 1'b0;
 
@@ -93,7 +93,7 @@ always_ff @(posedge clk) begin
     end
 
     if (fall_valid_3q) begin
-      tot <= fall_timestamp_q - rise_timestamp_q;
+      t_trailing_edge <= fall_timestamp_q;
       t_leading_edge <= rise_timestamp_q;
       data_valid <= 1'b1;
     end

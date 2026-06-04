@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 
 module top_calculator_tb;
 
@@ -9,14 +9,37 @@ import axi_pkg::*;
 axi_master_t axi_master = new();
 
 // ----- Local parameters -----
-localparam CLK_PERIOD = 10ns; // 100MHz
+parameter SAMPLE_NUM_PER_CYCLE = 24;
+parameter SAMPLING_CLK_PERIOD_PS = 16'd260;
+parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000; // 40 MHz
+parameter WIDTH = 32;
+parameter FRAC = 8;
+parameter real CLK_PERIOD = 6.25ns;
+parameter ID = 32'h0000_CA7C;
+parameter C_S00_AXI_DATA_WIDTH = 32;
+parameter C_S00_AXI_ADDR_WIDTH = 8;
+parameter V_MIN = 0;
+parameter V_MAX = 1.0;
+
+
+// ----- Memory map -----
+localparam bit [31:0] CSR_ADDR = 32'h0;
+localparam bit [31:0] TOT_RES_ADDR = 32'h4;
+localparam bit [31:0] T_LEAD_RES_LO_ADDR = 32'h8;
+localparam bit [31:0] T_LEAD_RES_HI_ADDR = 32'hC;
 
 // ----- Local variables -----
 logic clk;
-logic rst;
+logic rst_n_adc;
+logic clk_40MHz;
+logic clk_sample;
+logic rst_n;
+logic [WIDTH-1:0] thr;
+wire [11:0] adc_data_peek;
+wire adc_valid, adc_valid_peek;
 
 // ----- Samples stream -----
-logic [287:0] samples;
+logic [SAMPLE_NUM_PER_CYCLE*12-1:0] samples;
 
 // ----- AXI signals -----
 wire [BFM_AXI_VIP_ADDR_WIDTH-1 : 0] s00_axi_awaddr;
@@ -47,14 +70,27 @@ initial begin
   end
 end
 
-parameter SAMPLE_NUM_PER_CYCLE = 24;
-parameter WIDTH = 32;
-parameter FRAC = 8;
-parameter ID = 32'h0000_CA7C;
-parameter C_S00_AXI_DATA_WIDTH = 32;
-parameter C_S00_AXI_ADDR_WIDTH = 8;
+initial begin
+  clk_40MHz = 1'b0;
+  wait(rst_n); // Release synchonously so timestamp is accurate
+  forever begin
+    clk_40MHz = ~clk_40MHz;
+    #(TIMESTAMP_CLK_PERIOD_PS/2);
+  end
+end
+
+initial begin
+  clk_sample = 1'b0;
+  wait(rst_n_adc);
+  forever begin
+    clk_sample = ~clk_sample;
+    #(SAMPLING_CLK_PERIOD_PS/2);
+  end
+end
 
 tot_calculator_v1_5 #(
+  .SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
+  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
   .WIDTH               (WIDTH),
   .FRAC                (FRAC),
@@ -62,11 +98,12 @@ tot_calculator_v1_5 #(
   .C_S00_AXI_DATA_WIDTH(C_S00_AXI_DATA_WIDTH),
   .C_S00_AXI_ADDR_WIDTH(C_S00_AXI_ADDR_WIDTH)
 )
-u_tot_calculator_v1_5 (
+  dut (
   // Ports of Axi Slave Bus Interface S00_AXI
   .s00_axi_aclk   (clk),
+  .clk_timestamp  (clk_40MHz),
   .s00_axi_araddr (s00_axi_araddr),
-  .s00_axi_aresetn(~rst),
+  .s00_axi_aresetn(rst_n),
   .s00_axi_arprot (s00_axi_arprot),
   .s00_axi_arready(s00_axi_arready),
   .s00_axi_arvalid(s00_axi_arvalid),
@@ -118,7 +155,7 @@ axi_vip_v1_1_14_top #(
 ) BFM_AXI (
   .aclk          (clk),
   .aclken        (1'b1),
-  .aresetn       (~rst),
+  .aresetn       (rst_n),
   .s_axi_awid    (),
   .s_axi_awaddr  (),
   .s_axi_awlen   (),
@@ -214,122 +251,105 @@ axi_vip_v1_1_14_top #(
 );
 
 
-// ========================================================================
-// FRAME 1: The Rising Halves (First 24 Samples)
-// Peaks exactly between the end of Frame 1 and the start of Frame 2
-// ========================================================================
-localparam logic [11:0] PULSE_FRAME_1 [0:23] = '{
-  12'd0,    // Index 0  -> Pure Baseline
-  12'd10,   // Index 1
-  12'd30,   // Index 2
-  12'd70,   // Index 3
-  12'd130,  // Index 4
-  12'd220,  // Index 5
-  12'd350,  // Index 6
-  12'd530,  // Index 7
-  12'd770,  // Index 8
-  12'd1070, // Index 9
-  12'd1430, // Index 10 -> Accelerated rise
-  12'd1840, // Index 11
-  12'd2300, // Index 12
-  12'd2780, // Index 13
-  12'd3240, // Index 14
-  12'd3640, // Index 15 -> Nearing the top
-  12'd3900, // Index 16
-  12'd4040, // Index 17
-  12'd4080, // Index 18
-  12'd4090, // Index 19
-  12'd4092, // Index 20
-  12'd4093, // Index 21
-  12'd4094, // Index 22
-  12'd4095  // Index 23 -> Hits absolute max right at the frame boundary
-};
-
-// ========================================================================
-// FRAME 2: The Falling Halves (Next 24 Samples)
-// Begins at the peak and trails off exponentially
-// ========================================================================
-localparam logic [11:0] PULSE_FRAME_2 [0:23] = '{
-  12'd4095, // Index 0  -> Starts at absolute max at the boundary match
-  12'd3900, // Index 1  -> Smooth drop initiation
-  12'd3500, // Index 2  -> Fast exponential decay
-  12'd3050, // Index 3
-  12'd2650, // Index 4
-  12'd2280, // Index 5
-  12'd1950, // Index 6
-  12'd1660, // Index 7
-  12'd1410, // Index 8
-  12'd1190, // Index 9
-  12'd1000, // Index 10 -> Tail slowing down
-  12'd840,  // Index 11
-  12'd700,  // Index 12
-  12'd580,  // Index 13
-  12'd480,  // Index 14
-  12'd390,  // Index 15
-  12'd310,  // Index 16
-  12'd250,  // Index 17
-  12'd190,  // Index 18
-  12'd140,  // Index 19
-  12'd100,  // Index 20
-  12'd60,   // Index 21
-  12'd20,   // Index 22
-  12'd0     // Index 23 -> Back to clean baseline
-};
-
-logic [3:0] frame_toggle = 4'b0;
-
-always_ff @(posedge clk) begin
-  if (rst) begin
-    samples      <= '0;
-    frame_toggle <= 4'b0;
-  end
-  else begin
-    frame_toggle <= frame_toggle + 1; // Flip between Frame 1 and Frame 2
-
-    for (int i = 0; i < 24; i++) begin
-      if (frame_toggle == 0) begin
-        samples[i*12 +: 12] <= PULSE_FRAME_1[i];
-      end 
-      else if (frame_toggle == 10) begin
-        samples[i*12 +: 12] <= PULSE_FRAME_2[i];
-      end
-      else begin
-        samples <= '0;
-      end
-      
-    end
-  end
-end
-
-typedef logic [11:0] debug_array_t [0:23];
-debug_array_t debug_samples_peek;
-
-
-assign debug_samples_peek = debug_array_t'(samples);
-
-
+// ============================================================
+// Event display
+// ============================================================
+time rise_time_sim, fall_time_sim, start_time;
+time tot_sim;
+logic [11:0]adc_data_q;
 logic [31:0] tot;
 logic [63:0] t_lead;
 
+
+
+always_comb begin
+  if (adc_data_peek > thr && adc_data_q <= thr) rise_time_sim = $time();
+  if (adc_data_peek < thr && adc_data_q >= thr) fall_time_sim = $time();
+  tot_sim = fall_time_sim - rise_time_sim;
+end
+
+always_ff @ (posedge clk_sample) begin
+  adc_data_q <= adc_data_peek;
+end
+
+
+always @(posedge dut.tot_calculator_v1_5_S00_AXI_inst.u_tot_core_top.data_valid) begin
+  $display("--------------------------------------------------------");
+  $display("Sim leading edge = %0d to %0d", rise_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  rise_time_sim-start_time);
+  $display("Sim trailing edge = %0d to %0d", fall_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  fall_time_sim-start_time);
+  $display("Sim tot edge = %0d to %0d ", tot_sim - SAMPLING_CLK_PERIOD_PS,  tot_sim + SAMPLING_CLK_PERIOD_PS);
+  $display("--------------------------------------------------------");
+end
+
+// ============================================================
+// Main stimulus
+// ============================================================
 initial begin
   axi_master.init(BFM_AXI.IF, "axi_master");
-  rst = 1'b1;
-  #1us;
-  rst = 1'b0;
+  tot = '0;
+  t_lead = '0;
+
+  rst_n_adc = 1'b0;
+  rst_n = 1'b0;
+  thr = 12'h7FF;
+
+  wait_clk_cycles(10);
+  rst_n = 1'b1;
+  start_time = $time();
+  wait_clk_cycles(10);
+  axi_master.write(CSR_ADDR, 12'h7FF, 32);
+
+  wait_clk_cycles(1);
+  rst_n_adc = 1'b1;
+
+  #200ns;
+  wait_clk_cycles(400);
+
+    axi_master.read(TOT_RES_ADDR, tot, 32);
+    axi_master.read(T_LEAD_RES_LO_ADDR, t_lead[31:0], 32);
+    axi_master.read(T_LEAD_RES_HI_ADDR, t_lead[63:32], 32);
+    $display("Leading edge = %0dps | ToT = %0dps", $unsigned(t_lead), $unsigned(tot));
 
 
-  axi_master.write(32'h00, 32'd380, 32);
+  $finish;
 
-  repeat(16) begin
-    #250ns;
-    axi_master.read(32'h04, tot, 32);
-    axi_master.read(32'h08, t_lead[31:0], 32);
-    axi_master.read(32'h0C, t_lead[63:32], 32);
-  
-    $display("TOT = %dps  |  T_LEAD = %dns", tot, t_lead / 1000);
-  end
-
-  $finish(0);
 end
+
+
+adc_csv_streamer #(
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output2.csv"),
+  .V_MIN   (V_MIN),
+  .V_MAX   (V_MAX)
+)
+u_adc_csv_streamer (
+  .adc_data  (adc_data_peek),
+  .adc_valid (adc_valid_peek),
+  .rst_n     (rst_n_adc),
+  .sample_clk(clk_sample)
+);
+
+adc_csv_streamer2 #(
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output2.csv"),
+  .V_MIN   (V_MIN),
+  .V_MAX   (V_MAX),
+  .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE)
+)
+u_adc_csv_streamer_fast (
+  .adc_data  (samples),
+  .adc_valid (adc_valid),
+  .rst_n     (rst_n_adc),
+  .sample_clk(clk)
+);
+
+// ============================================================
+// Wait clocks
+// ============================================================
+
+task automatic wait_clk_cycles (input int clk_num);
+  begin
+    repeat(clk_num) @(posedge clk);
+  end
+endtask
+
 
 endmodule

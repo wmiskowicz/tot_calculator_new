@@ -79,6 +79,7 @@ end
 
 initial begin
   clk_sample = 1'b0;
+  wait(rst_n); // Release synchonously so timestamp is accurate
   forever begin
     clk_sample = ~clk_sample;
     #(SAMPLING_CLK_PERIOD_PS/2);
@@ -91,15 +92,25 @@ end
 // ============================================================
 time rise_time_sim, fall_time_sim, start_time;
 time tot_sim;
+logic [11:0]adc_data_q;
+
 
 always_comb begin
-  if (dut.rise_detected == 1) rise_time_sim = $time();
-  if (dut.fall_detected == 1) fall_time_sim = $time();
+  if (adc_data_peek > thr && adc_data_q <= thr) rise_time_sim = $time();
+  if (adc_data_peek < thr && adc_data_q >= thr) fall_time_sim = $time();
   tot_sim = fall_time_sim - rise_time_sim;
 end
 
+always_ff @ (posedge clk_sample) begin
+  adc_data_q <= adc_data_peek;
+end
+
+
 always @(posedge data_valid) begin
   $display("--------------------------------------------------------");
+  $display("Sim leading edge = %0d to %0d", rise_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  rise_time_sim-start_time);
+  $display("Sim trailing edge = %0d to %0d", fall_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  fall_time_sim-start_time);
+  $display("Sim tot edge = %0d to %0d ", tot_sim - SAMPLING_CLK_PERIOD_PS,  tot_sim + SAMPLING_CLK_PERIOD_PS);
   $display("Leading edge = %0dps | ToT = %0dps", $unsigned(t_leading_edge), $unsigned(tot));
   $display("--------------------------------------------------------");
 end
@@ -130,7 +141,7 @@ end
 
 
 adc_csv_streamer #(
-  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output.csv"),
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output3.csv"),
   .V_MIN   (V_MIN),
   .V_MAX   (V_MAX)
 )
@@ -142,7 +153,7 @@ u_adc_csv_streamer (
 );
 
 adc_csv_streamer2 #(
-  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output.csv"),
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output3.csv"),
   .V_MIN   (V_MIN),
   .V_MAX   (V_MAX),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE)

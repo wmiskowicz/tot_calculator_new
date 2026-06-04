@@ -1,16 +1,18 @@
 module output_sum #(
   parameter PORTS_WIDTH = 32,
   parameter FRAC = 8,
-  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 15'd625,
+  SAMPLE_NUM_PER_CYCLE = 24,
+  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 16'd616,
   parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000
 )(
   input wire clk_data,
   input wire rst_n,
 
   input logic                     data_valid_in,
-  input logic [PORTS_WIDTH-1:0]   tot_in,
+  input logic [PORTS_WIDTH-1:0]   t_trailing_edge_in,
   input logic [PORTS_WIDTH-1:0]   t_leading_edge_in, // format: [31-FRAC:FRAC]
-  input logic [63:0]              master_timestamp_in,
+  input logic [31:0]              master_timestamp_rise,
+  input logic [31:0]              master_timestamp_fall,
 
   output logic                    data_valid_out,
   output logic [PORTS_WIDTH-1:0]  tot_out,
@@ -20,11 +22,9 @@ module output_sum #(
 // ----- Local variables -----
 
 logic [2:0]  vld_pipe;
-
-logic [63:0] tot_q, tot_2q;
-
-logic [63:0] t_leading_edge_q;
-logic [63:0] t_leading_edge_2q;
+logic [63:0] tot_q;
+logic [63:0] t_leading_edge_q, t_leading_edge_2q;
+logic [63:0] t_trailing_edge_q, t_trailing_edge_2q;
 
 
 
@@ -36,22 +36,30 @@ always_ff @(posedge clk_data) begin
     tot_out            <= '0;
     t_leading_edge_q   <= '0;
     t_leading_edge_2q  <= '0;
+    t_trailing_edge_q  <= '0;
+    t_trailing_edge_2q <= '0;
     t_leading_edge_out <= '0;
     tot_q <= '0;
-    tot_2q <= '0;
-  end else begin
+  end 
+  else begin
     vld_pipe <= {vld_pipe[1:0], data_valid_in};
-    tot_q    <= 64'(tot_in * SAMPLING_CLK_PERIOD_PS);
-    tot_2q   <= (tot_q >> FRAC);
 
     t_leading_edge_q <= 64'(t_leading_edge_in * SAMPLING_CLK_PERIOD_PS);
-    t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + (64'(master_timestamp_in) * TIMESTAMP_CLK_PERIOD_PS);
+    // because of clock-crossing we reset small counter 2 times less
+    t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + 64'(master_timestamp_rise * TIMESTAMP_CLK_PERIOD_PS);
+    
 
+    t_trailing_edge_q <= 64'(t_trailing_edge_in * SAMPLING_CLK_PERIOD_PS);
+    t_trailing_edge_2q <= (t_trailing_edge_q >> FRAC) + 64'(master_timestamp_fall * TIMESTAMP_CLK_PERIOD_PS); 
 
+    tot_q <= t_trailing_edge_2q - t_leading_edge_2q;
+    
     data_valid_out     <= vld_pipe[2];
     if (vld_pipe[2]) begin
-      tot_out            <= tot_2q[PORTS_WIDTH-1:0];
-      t_leading_edge_out <= t_leading_edge_2q;
+      $display("master_timestamp_rise = %0dps", 64'(master_timestamp_rise * TIMESTAMP_CLK_PERIOD_PS));
+      $display("master_timestamp_fall = %0dps", 64'(master_timestamp_fall * TIMESTAMP_CLK_PERIOD_PS));
+      tot_out            <= tot_q[31:0];
+      t_leading_edge_out <= t_leading_edge_2q - ((3 * SAMPLE_NUM_PER_CYCLE) * SAMPLING_CLK_PERIOD_PS); // Compensate offset
     end
   end
 end

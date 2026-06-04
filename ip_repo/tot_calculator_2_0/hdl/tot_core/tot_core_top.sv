@@ -2,7 +2,7 @@ module tot_core_top #(
   parameter SAMPLE_NUM_PER_CYCLE = 1,
   parameter WIDTH = 32,
   parameter FRAC = 8,
-  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 32'd625, // 1.6 GHz sampling clock
+  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
   parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000 // 40 MHz timestamp clock
 )(
   input wire clk,
@@ -25,12 +25,12 @@ module tot_core_top #(
 wire data_valid_in;
 wire data_valid_out;
 
-wire [WIDTH-1:0] tot_in;
+wire [WIDTH-1:0] t_trailing_edge;
 wire [WIDTH-1:0] tot_out;
 
 wire [WIDTH-1:0] t_leading_edge_in;
 wire [63:0] t_leading_edge_out;
-wire [63:0] master_timestamp;
+wire [31:0] master_timestamp_rise, master_timestamp_fall;
 
 // Edge detection
 
@@ -69,8 +69,6 @@ assign tot = tot_out;
 // ============================================================
 
 coarse_tot_core #(
-  .SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
-  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
   .WIDTH(WIDTH)
 )
@@ -95,12 +93,11 @@ u_coarse_tot_core
 
   .rise_coarse_time(rise_coarse_time),
   .fall_coarse_time(fall_coarse_time),
-  .master_timestamp_out(master_timestamp)
+  .master_timestamp_rise(master_timestamp_rise),
+  .master_timestamp_fall(master_timestamp_fall)
 );
 
-// ============================================================
-// Rising edge interpolation
-// ============================================================
+
 
 interp_exp #(
   .FRAC(FRAC),
@@ -121,10 +118,6 @@ u_rising_interp_exp
   .frac(rise_frac)
 );
 
-// ============================================================
-// Falling edge interpolation
-// ============================================================
-
 interp_exp #(
   .FRAC(FRAC),
   .IS_FALLING(1)
@@ -144,9 +137,6 @@ u_falling_interp_exp
   .frac(fall_frac)
 );
 
-// ============================================================
-// Final accumulator
-// ============================================================
 
 tot_final_accumulator #(
   .WIDTH(WIDTH),
@@ -166,7 +156,7 @@ u_tot_final_accumulator
   .rise_frac(rise_frac),
   .fall_frac(fall_frac),
 
-  .tot(tot_in),
+  .t_trailing_edge(t_trailing_edge),
   .t_leading_edge(t_leading_edge_in),
   .data_valid(data_valid_in)
 );
@@ -174,7 +164,10 @@ u_tot_final_accumulator
 
 
 output_sum #(
-  .PORTS_WIDTH(WIDTH)
+  .PORTS_WIDTH(WIDTH),
+  .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
+  .SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
+  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS)
 )
 u_output_sum (
   .clk_data          (clk),
@@ -182,10 +175,11 @@ u_output_sum (
 
   .data_valid_in     (data_valid_in),
   .data_valid_out    (data_valid_out),
-  .master_timestamp_in(master_timestamp),
+  .master_timestamp_rise(master_timestamp_rise),
+  .master_timestamp_fall(master_timestamp_fall),
   .t_leading_edge_in (t_leading_edge_in),
   .t_leading_edge_out(t_leading_edge_out), //Picosecond master timestamp
-  .tot_in            (tot_in),
+  .t_trailing_edge_in(t_trailing_edge),
   .tot_out           (tot_out)
 );
 

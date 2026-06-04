@@ -22,6 +22,8 @@
 module tot_calculator_v1_5 #
 (
 	// ToT calculator parameters
+  parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+  parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
 	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,
 	parameter FRAC = 8,
@@ -36,6 +38,7 @@ module tot_calculator_v1_5 #
 	input wire [SAMPLE_NUM_PER_CYCLE*12-1:0] sample,
 	input wire sample_valid,
 	output wire sample_ready,
+	input  wire clk_timestamp, 
 
 	// Ports of Axi Slave Bus Interface S00_AXI
 	input wire  s00_axi_aclk,
@@ -62,6 +65,8 @@ module tot_calculator_v1_5 #
 );
 // Instantiation of Axi Bus Interface S00_AXI
 tot_calculator_v1_5_S00_AXI # (
+	.SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
+  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
 	.SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
 	.WIDTH(WIDTH),
 	.FRAC(FRAC),
@@ -72,6 +77,7 @@ tot_calculator_v1_5_S00_AXI # (
 	.sample        (sample),
 	.sample_valid	 (sample_valid),
 	.sample_ready  (sample_ready),
+	.clk_timestamp (clk_timestamp),
 	.S_AXI_ACLK(s00_axi_aclk),
 	.S_AXI_ARESETN(s00_axi_aresetn),
 	.S_AXI_AWADDR(s00_axi_awaddr),

@@ -3,7 +3,8 @@
 
 module tot_calculator_v1_5_S00_AXI #
 (
-
+  parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+  parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
 	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,
 	parameter FRAC = 8,
@@ -13,6 +14,7 @@ module tot_calculator_v1_5_S00_AXI #
 	parameter integer C_S_AXI_ADDR_WIDTH  = 4
 )
 (
+  input  wire clk_timestamp,
 	input wire [SAMPLE_NUM_PER_CYCLE*12-1:0] sample,
 	input wire sample_valid,
 	output wire sample_ready,
@@ -378,12 +380,15 @@ reg [287:0] sample_q;
 assign thr_in = slv_reg0[WIDTH-1:0];
 
 tot_core_top #(
+	.SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
+  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
 	.SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
 	.WIDTH               (WIDTH),
 	.FRAC                (FRAC)
 )
 u_tot_core_top (
 	.clk           (S_AXI_ACLK),
+  .clk_40MHz		 (clk_timestamp),
 	.rst_n         (S_AXI_ARESETN),
 
 
