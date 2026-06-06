@@ -35,7 +35,7 @@ logic clk_40MHz;
 logic clk_sample;
 logic rst_n;
 logic [WIDTH-1:0] thr;
-wire [11:0] adc_data_peek;
+logic [11:0] adc_data_peek;
 wire adc_valid, adc_valid_peek;
 
 // ----- Samples stream -----
@@ -102,6 +102,7 @@ tot_calculator_v1_5 #(
   // Ports of Axi Slave Bus Interface S00_AXI
   .s00_axi_aclk   (clk),
   .clk_timestamp  (clk_40MHz),
+  .rst_n_timestamp(rst_n),
   .s00_axi_araddr (s00_axi_araddr),
   .s00_axi_aresetn(rst_n),
   .s00_axi_arprot (s00_axi_arprot),
@@ -268,10 +269,22 @@ always_comb begin
   tot_sim = fall_time_sim - rise_time_sim;
 end
 
+// For edge detection
 always_ff @ (posedge clk_sample) begin
   adc_data_q <= adc_data_peek;
 end
 
+// For debug waveform peek
+logic [11:0] adc_data_peek_q [23:0];
+
+always_ff @(posedge clk_sample) begin
+  adc_data_peek_q[0] <= adc_data_peek;
+  
+  // Shift all remaining elements down by 1 position every clock cycle
+  for (int i = 1; i < 24; i++) begin
+    adc_data_peek_q[i] <= adc_data_peek_q[i-1];
+  end
+end
 
 always @(posedge dut.tot_calculator_v1_5_S00_AXI_inst.u_tot_core_top.data_valid) begin
   $display("--------------------------------------------------------");
@@ -305,11 +318,12 @@ initial begin
   #200ns;
   wait_clk_cycles(400);
 
-    axi_master.read(TOT_RES_ADDR, tot, 32);
-    axi_master.read(T_LEAD_RES_LO_ADDR, t_lead[31:0], 32);
-    axi_master.read(T_LEAD_RES_HI_ADDR, t_lead[63:32], 32);
-    $display("Leading edge = %0dps | ToT = %0dps", $unsigned(t_lead), $unsigned(tot));
-
+    repeat(6) begin
+      axi_master.read(TOT_RES_ADDR, tot, 32);
+      axi_master.read(T_LEAD_RES_LO_ADDR, t_lead[31:0], 32);
+      axi_master.read(T_LEAD_RES_HI_ADDR, t_lead[63:32], 32);
+      $display("Leading edge = %0dps | ToT = %0dps", $unsigned(t_lead), $unsigned(tot));
+    end
 
   $finish;
 

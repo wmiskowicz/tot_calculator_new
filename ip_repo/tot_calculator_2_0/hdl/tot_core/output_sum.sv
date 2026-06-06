@@ -56,8 +56,6 @@ always_ff @(posedge clk_data) begin
     
     data_valid_out     <= vld_pipe[2];
     if (vld_pipe[2]) begin
-      $display("master_timestamp_rise = %0dps", 64'(master_timestamp_rise * TIMESTAMP_CLK_PERIOD_PS));
-      $display("master_timestamp_fall = %0dps", 64'(master_timestamp_fall * TIMESTAMP_CLK_PERIOD_PS));
       tot_out            <= tot_q[31:0];
       t_leading_edge_out <= t_leading_edge_2q - ((3 * SAMPLE_NUM_PER_CYCLE) * SAMPLING_CLK_PERIOD_PS); // Compensate offset
     end

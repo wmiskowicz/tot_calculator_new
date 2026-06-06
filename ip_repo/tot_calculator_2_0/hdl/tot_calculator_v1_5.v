@@ -39,6 +39,7 @@ module tot_calculator_v1_5 #
 	input wire sample_valid,
 	output wire sample_ready,
 	input  wire clk_timestamp, 
+	input  wire rst_n_timestamp,
 
 	// Ports of Axi Slave Bus Interface S00_AXI
 	input wire  s00_axi_aclk,
@@ -78,6 +79,7 @@ tot_calculator_v1_5_S00_AXI # (
 	.sample_valid	 (sample_valid),
 	.sample_ready  (sample_ready),
 	.clk_timestamp (clk_timestamp),
+	.rst_n_40MHz	 (rst_n_timestamp),
 	.S_AXI_ACLK(s00_axi_aclk),
 	.S_AXI_ARESETN(s00_axi_aresetn),
 	.S_AXI_AWADDR(s00_axi_awaddr),

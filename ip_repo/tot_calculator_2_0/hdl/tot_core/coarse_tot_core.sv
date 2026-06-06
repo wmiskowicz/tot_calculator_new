@@ -4,6 +4,7 @@ module coarse_tot_core #(
 )(
   input  wire clk,
   input  wire clk_timestamp,      // ~40MHz
+  input  wire rst_n_40MHz, 
   input  wire rst_n,
 
   input  wire [WIDTH-1:0] thr,
@@ -46,6 +47,8 @@ logic fall_detected_nxt, fall_detected_q, fall_detected_2q;
 
 logic [WIDTH-1:0] rise_coarse_time_nxt, rise_coarse_time_q, rise_coarse_time_2q;
 logic [WIDTH-1:0] fall_coarse_time_nxt, fall_coarse_time_q, fall_coarse_time_2q;
+
+logic [31:0] master_timestamp_40mhz;
 
 
 always_ff @(posedge clk or negedge rst_n) begin
@@ -153,10 +156,9 @@ always_comb begin
       rise_detected_nxt    = 1'b1;
       rise_curr_sample_nxt = current_sample;
       rise_prev_sample_nxt = previous_sample;
-      // rise_coarse_time_nxt = (sampl_clk_ctr + i) - 1 - (2 * SAMPLE_NUM_PER_CYCLE); // In sampling clk cycles
       rise_coarse_time_nxt = (sampl_clk_ctr + i); // In sampling clk cycles
       pulse_active_nxt     = 1'b1;
-      $display("Rise found at i = %d, sampl_clk_ctr=%d", i, sampl_clk_ctr); // compensate input delay*
+      $display("Rise found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
     end
 
     // --- Falling edge ---
@@ -164,29 +166,23 @@ always_comb begin
       fall_detected_nxt    = 1'b1;
       fall_curr_sample_nxt = current_sample;
       fall_prev_sample_nxt = previous_sample;
-      fall_coarse_time_nxt = (sampl_clk_ctr + i); // compensate input delay*
-      $display("Rise found at i = %d, sampl_clk_ctr=%d", i, sampl_clk_ctr); // compensate input delay*
+      fall_coarse_time_nxt = (sampl_clk_ctr + i); // In sampling clk cycles
+      $display("Fall found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
       pulse_active_nxt     = 1'b0;
     end
 
   end
 end
 
-// *We compensate 1-clock delay at the input and off-by-1 error of sampl_clk_ctr.
-// sampl_clk_ctr start counting inmediatelly after reset but we want it to be 0 at the 1'st cycle 
-// - 1 comes from the fact that we need time of a prev_sample for computing (we will add fraction to it later)
-// alternatively one could pick curr_sample and then subtract fraction
-
 
 // ----- Timestamp driven by 40MHz -----
-logic [31:0] master_timestamp_40mhz;
 
-always_ff @(posedge clk_timestamp or negedge rst_n) begin
-  if (!rst_n) begin
-    master_timestamp_40mhz <= 64'd0;
+always_ff @(posedge clk_timestamp or negedge rst_n_40MHz) begin
+  if (!rst_n_40MHz) begin
+    master_timestamp_40mhz <= 32'd0;
   end 
   else begin
-    master_timestamp_40mhz <= master_timestamp_40mhz + 64'd1;
+    master_timestamp_40mhz <= master_timestamp_40mhz + 32'd1;
   end
 end
 
@@ -200,7 +196,7 @@ xpm_cdc_array_single #(
   .INIT_SYNC_FF(0),   
   .SIM_ASSERT_CHK(0), 
   .SRC_INPUT_REG(1),
-  .WIDTH(64)
+  .WIDTH(32)
 ) xpm_cdc_timestamp_inst (
   .src_clk(clk_timestamp),
   .src_in(master_timestamp_40mhz),
@@ -210,15 +206,17 @@ xpm_cdc_array_single #(
 
 
 // ----- Timestamp in 160MHz -----
-logic [31:0 ] master_timestamp_160mhz_q;
+logic [31:0 ] master_timestamp_160mhz_q, master_timestamp_160mhz_2q;
 always_ff @(posedge clk) begin
   if (!rst_n) begin
     master_timestamp_rise <= 32'd0;
     master_timestamp_fall <= 32'd0;
     master_timestamp_160mhz_q <= 32'b0;
+    master_timestamp_160mhz_2q <= 32'b0;
   end 
   else begin
     master_timestamp_160mhz_q <= master_timestamp_160mhz;
+    master_timestamp_160mhz_2q <= master_timestamp_160mhz_q;
     master_timestamp_rise <= (rise_detected_2q) ? master_timestamp_160mhz : master_timestamp_rise;
     master_timestamp_fall <= (fall_detected_2q) ? master_timestamp_160mhz : master_timestamp_fall;
   end
@@ -230,10 +228,10 @@ end
 // Note that FPGA clock frequency differs from ADC sampling frequency
 always_ff @(posedge clk) begin
   if (!rst_n) begin
-    sampl_clk_ctr <= 16'd0;
+    sampl_clk_ctr <= 32'd0;
   end
-  else if (master_timestamp_160mhz != master_timestamp_160mhz_q) begin
-    sampl_clk_ctr <= 16'd0;
+  else if (master_timestamp_160mhz_q != master_timestamp_160mhz_2q) begin
+    sampl_clk_ctr <= 32'd0;
   end
   else begin
     sampl_clk_ctr <= sampl_clk_ctr + SAMPLE_NUM_PER_CYCLE;

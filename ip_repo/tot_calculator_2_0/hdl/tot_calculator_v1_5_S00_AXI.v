@@ -3,8 +3,8 @@
 
 module tot_calculator_v1_5_S00_AXI #
 (
-  parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
-  parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
+	parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+	parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
 	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,
 	parameter FRAC = 8,
@@ -14,7 +14,8 @@ module tot_calculator_v1_5_S00_AXI #
 	parameter integer C_S_AXI_ADDR_WIDTH  = 4
 )
 (
-  input  wire clk_timestamp,
+	input  wire clk_timestamp,
+	input  wire rst_n_40MHz,
 	input wire [SAMPLE_NUM_PER_CYCLE*12-1:0] sample,
 	input wire sample_valid,
 	output wire sample_ready,
@@ -110,6 +111,8 @@ wire [C_S_AXI_DATA_WIDTH-1:0] slv_reg1;
 wire [C_S_AXI_DATA_WIDTH-1:0] slv_reg2;
 wire [C_S_AXI_DATA_WIDTH-1:0]  slv_reg3;
 wire [C_S_AXI_DATA_WIDTH-1:0]  slv_reg4;
+wire [C_S_AXI_DATA_WIDTH-1:0]  slv_reg5;
+wire [C_S_AXI_DATA_WIDTH-1:0]  slv_reg6;
 wire   slv_reg_rden;
 wire   slv_reg_wren;
 reg [C_S_AXI_DATA_WIDTH-1:0]   reg_data_out;
@@ -342,6 +345,8 @@ always @(*) begin
 		3'h2   : reg_data_out <= slv_reg2;
 		3'h3   : reg_data_out <= slv_reg3;
 		3'h4   : reg_data_out <= slv_reg4;
+		3'h5   : reg_data_out <= slv_reg5;
+		3'h6   : reg_data_out <= slv_reg6;
 		default : reg_data_out <= 0;
 	endcase
 end
@@ -362,14 +367,11 @@ always @( posedge S_AXI_ACLK ) begin
 end
 
 
+
+
 // ---------------------------------------
 // ----- ToT calculator custom logic -----
 // ---------------------------------------
-
-// Register 0 - R/W - Threshold
-// Register 1 - R   - Time over threshold
-// Register 2 - R   - Time of leading edge
-// Register 3 - R   - ID register
 
 wire [WIDTH-1:0] tot;
 wire [63:0] t_leading_edge;
@@ -381,15 +383,16 @@ assign thr_in = slv_reg0[WIDTH-1:0];
 
 tot_core_top #(
 	.SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
-  .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
+	.TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS),
 	.SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
 	.WIDTH               (WIDTH),
 	.FRAC                (FRAC)
 )
 u_tot_core_top (
 	.clk           (S_AXI_ACLK),
-  .clk_40MHz		 (clk_timestamp),
+	.clk_40MHz     (clk_timestamp),
 	.rst_n         (S_AXI_ARESETN),
+	.rst_n_40MHz   (rst_n_40MHz),
 
 
 	.thr           (thr_in),
@@ -413,42 +416,80 @@ always @(posedge S_AXI_ACLK) begin
 		sample_q <= sample;
 		sample_ctr <= sample_ctr + 16'd1;
 	end
-	else begin 
+	else begin
 		sample_q <= 288'd0;
 	end
 end
 
 
+reg [11:0] sample_max;
+reg [11:0] current_cycle_max;
+integer i;
 
+always @(*) begin
+	current_cycle_max = sample[11:0];
+
+	for (i = 1; i < 24; i=i+1) begin
+		if (sample[i*12 +: 12] > current_cycle_max) begin
+			current_cycle_max = sample[i*12 +: 12];
+		end
+	end
+end
+
+always @(posedge S_AXI_ACLK) begin
+	if (~S_AXI_ARESETN) begin
+		sample_max <= 12'd0;
+	end
+	else if (sample_valid) begin
+		if (current_cycle_max > sample_max) begin
+			sample_max <= current_cycle_max;
+		end
+	end
+end
+
+assign slv_reg6 = sample_max;
+assign slv_reg5 = tot;
+
+reg [7:0] araddr_q;
+reg rvalid_q;
+always @(posedge S_AXI_ACLK) begin
+	if (~S_AXI_ARESETN) begin
+		araddr_q <= 8'b0;
+	end
+	else if (S_AXI_ARVALID) begin
+		araddr_q <= S_AXI_ARADDR;
+	end
+
+	rvalid_q <= axi_rvalid;
+end
 
 // ----- FIFO -----
 wire wr_en;
 wire rd_en1, rd_en2, rd_en3;
-wire [1:0] scaled_addr;
+wire [2:0] scaled_addr;
 wire [WIDTH-1:0] tot_reg;
 wire [WIDTH-1:0] t_leading_reg_hi;
 wire [WIDTH-1:0] t_leading_reg_low;
 wire full1, full2, full3;
 wire empty1, empty2, empty3;
 
-assign scaled_addr = axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB];
-assign wr_en = data_valid && !(full1 || full2);
-assign rd_en1 = slv_reg_rden && (scaled_addr==2'h1) && !empty1;
-assign rd_en2 = slv_reg_rden && (scaled_addr==2'h2) && !empty2;
-assign rd_en3 = slv_reg_rden && (scaled_addr==2'h3) && !empty3;
+assign scaled_addr = araddr_q[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB];
+assign wr_en = data_valid && !(full1 || full2 || full3);
+assign rd_en1 = rvalid_q && (scaled_addr==3'h1) && !empty1;
+assign rd_en2 = rvalid_q && (scaled_addr==3'h2) && !empty2;
+assign rd_en3 = rvalid_q && (scaled_addr==3'h3) && !empty3;
 
 assign slv_reg1 = tot_reg;
 assign slv_reg2 = t_leading_reg_low;
 assign slv_reg3 = t_leading_reg_hi;
 assign sample_ready = !(full1 || full2 || full3);
 
-
-fifo_generator_0 fifo_t_leading_low (
+fifo_axi fifo_tot (
 	.clk        (S_AXI_ACLK),
 	.srst       (!S_AXI_ARESETN),
 
-	.din        (t_leading_edge[31:0]),
-	.dout       (t_leading_reg_low),
+	.din        (tot),
+	.dout       (tot_reg),
 	.empty      (empty1),
 	.full       (full1),
 	.rd_en      (rd_en1),
@@ -457,12 +498,12 @@ fifo_generator_0 fifo_t_leading_low (
 	.wr_rst_busy()
 );
 
-fifo_generator_0 fifo_t_leading_hi (
+fifo_axi fifo_t_leading_low (
 	.clk        (S_AXI_ACLK),
 	.srst       (!S_AXI_ARESETN),
 
-	.din        (t_leading_edge[63:32]),
-	.dout       (t_leading_reg_hi),
+	.din        (t_leading_edge[31:0]),
+	.dout       (t_leading_reg_low),
 	.empty      (empty2),
 	.full       (full2),
 	.rd_en      (rd_en2),
@@ -471,12 +512,12 @@ fifo_generator_0 fifo_t_leading_hi (
 	.wr_rst_busy()
 );
 
-fifo_generator_0 fifo_tot (
+fifo_axi fifo_t_leading_hi (
 	.clk        (S_AXI_ACLK),
 	.srst       (!S_AXI_ARESETN),
 
-	.din        (tot),
-	.dout       (tot_reg),
+	.din        (t_leading_edge[63:32]),
+	.dout       (t_leading_reg_hi),
 	.empty      (empty3),
 	.full       (full3),
 	.rd_en      (rd_en3),

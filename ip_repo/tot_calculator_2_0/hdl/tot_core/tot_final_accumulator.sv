@@ -8,6 +8,9 @@ module tot_final_accumulator #(
   input wire rise_valid,
   input wire fall_valid,
 
+  input wire [WIDTH-1:0] master_timestamp_rise_in,
+  input wire [WIDTH-1:0] master_timestamp_fall_in,
+
   input wire [WIDTH-1:0] rise_coarse_time,
   input wire [WIDTH-1:0] fall_coarse_time,
 
@@ -17,12 +20,16 @@ module tot_final_accumulator #(
   output logic [WIDTH-1:0] t_trailing_edge,
   output logic [WIDTH-1:0] t_leading_edge,
 
+  output logic [WIDTH-1:0] master_timestamp_rise_out,
+  output logic [WIDTH-1:0] master_timestamp_fall_out,
+
   output logic data_valid
 );
 
-logic [WIDTH-1:0] rise_timestamp;
-logic [WIDTH-1:0] rise_timestamp_q;
-logic [WIDTH-1:0] fall_timestamp, fall_timestamp_q;
+logic [WIDTH-1:0] t_rising_q, t_rising_2q;
+logic [WIDTH-1:0] master_timestamp_rise_q, master_timestamp_rise_2q;
+logic [WIDTH-1:0] master_timestamp_fall_q, master_timestamp_fall_2q;
+logic [WIDTH-1:0] t_falling_q, t_falling_2q;
 
 
 logic             rise_valid_q, rise_valid_2q;
@@ -73,28 +80,43 @@ always_ff @(posedge clk) begin
     t_leading_edge <= '0;
     data_valid <= 1'b0;
 
-    rise_timestamp <= '0;
-    fall_timestamp <= '0;
-    rise_timestamp_q <= '0;
-    fall_timestamp_q <= '0;
+    t_rising_q <= '0;
+    t_falling_q <= '0;
+    t_rising_2q <= '0;
+    t_falling_2q <= '0;
+
+    master_timestamp_rise_q <= '0;
+    master_timestamp_fall_q <= '0;
+
+    master_timestamp_rise_2q <= '0;
+    master_timestamp_fall_2q <= '0;
+
+    master_timestamp_rise_out <= '0;
+    master_timestamp_fall_out <= '0;
   end
   else begin
-    rise_timestamp_q <= rise_timestamp;
-    fall_timestamp_q <= fall_timestamp;
+    t_rising_2q <= t_rising_q;
+    t_falling_2q <= t_falling_q;
+    master_timestamp_rise_q <= master_timestamp_rise_in;
+    master_timestamp_fall_q <= master_timestamp_fall_in;
 
     data_valid <= 1'b0;
 
     if (rise_valid_q) begin
-      rise_timestamp <= (rise_coarse_time_q << FRAC) | rise_frac_q;
+      t_rising_q <= (rise_coarse_time_q << FRAC) | rise_frac_q;
+      master_timestamp_rise_2q <= master_timestamp_rise_q;
     end
 
     if (fall_valid_q) begin
-      fall_timestamp <= (fall_coarse_time_q << FRAC) | fall_frac_q;
+      t_falling_q <= (fall_coarse_time_q << FRAC) | fall_frac_q;
+      master_timestamp_fall_2q <= master_timestamp_fall_q;
     end
 
     if (fall_valid_3q) begin
-      t_trailing_edge <= fall_timestamp_q;
-      t_leading_edge <= rise_timestamp_q;
+      master_timestamp_rise_out <= master_timestamp_rise_2q;
+      master_timestamp_fall_out <= master_timestamp_fall_2q;
+      t_trailing_edge <= t_falling_2q;
+      t_leading_edge <= t_rising_2q;
       data_valid <= 1'b1;
     end
     

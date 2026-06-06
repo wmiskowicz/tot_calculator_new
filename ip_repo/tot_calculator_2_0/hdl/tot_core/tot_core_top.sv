@@ -7,6 +7,7 @@ module tot_core_top #(
 )(
   input wire clk,
   input wire clk_40MHz,
+  input wire rst_n_40MHz,
   input wire rst_n,
 
   input wire [WIDTH-1:0] thr,
@@ -30,7 +31,8 @@ wire [WIDTH-1:0] tot_out;
 
 wire [WIDTH-1:0] t_leading_edge_in;
 wire [63:0] t_leading_edge_out;
-wire [31:0] master_timestamp_rise, master_timestamp_fall;
+wire [31:0] master_timestamp_rise1, master_timestamp_rise2, master_timestamp_rise3; 
+wire [31:0] master_timestamp_fall1, master_timestamp_fall2, master_timestamp_fall3; 
 
 // Edge detection
 
@@ -75,7 +77,8 @@ coarse_tot_core #(
 u_coarse_tot_core
 (
   .clk(clk),
-  .clk_timestamp     (clk_40MHz),
+  .clk_timestamp(clk_40MHz),
+  .rst_n_40MHz(rst_n_40MHz),     
   .rst_n(rst_n),
 
   .thr(thr),
@@ -93,8 +96,8 @@ u_coarse_tot_core
 
   .rise_coarse_time(rise_coarse_time),
   .fall_coarse_time(fall_coarse_time),
-  .master_timestamp_rise(master_timestamp_rise),
-  .master_timestamp_fall(master_timestamp_fall)
+  .master_timestamp_rise(master_timestamp_rise1),
+  .master_timestamp_fall(master_timestamp_fall1)
 );
 
 
@@ -107,14 +110,17 @@ u_rising_interp_exp
 (
   .clk(clk),
   .rst(!rst_n),
+
   .prev_sample(rise_prev_sample),
   .curr_sample(rise_curr_sample),
   .event_time_in(rise_coarse_time),
+  .master_timestamp_in(master_timestamp_rise1),
   .sample_valid_in(rise_detected),
   .thr(thr[11:0]),
 
-  .event_time_out(rise_time),
   .sample_valid_out(raise_frac_valid),
+  .master_timestamp_out(master_timestamp_rise2),
+  .event_time_out(rise_time),
   .frac(rise_frac)
 );
 
@@ -130,10 +136,12 @@ u_falling_interp_exp
   .curr_sample(fall_curr_sample),
   .event_time_in(fall_coarse_time),
   .sample_valid_in(fall_detected),
+  .master_timestamp_in(master_timestamp_fall1),
   .thr(thr[11:0]),
 
   .event_time_out(fall_time),
   .sample_valid_out(fall_frac_valid),
+  .master_timestamp_out(master_timestamp_fall2),
   .frac(fall_frac)
 );
 
@@ -147,18 +155,20 @@ u_tot_final_accumulator
   .clk(clk),
   .rst_n(rst_n),
 
-  .rise_valid(raise_frac_valid),
-  .fall_valid(fall_frac_valid),
+  .master_timestamp_fall_in (master_timestamp_fall2),
+  .master_timestamp_rise_in (master_timestamp_rise2),
+  .rise_valid               (raise_frac_valid),
+  .fall_valid               (fall_frac_valid),
+  .rise_coarse_time         (rise_time),
+  .fall_coarse_time         (fall_time),
+  .rise_frac                (rise_frac),
+  .fall_frac                (fall_frac),
 
-  .rise_coarse_time(rise_time),
-  .fall_coarse_time(fall_time),
-
-  .rise_frac(rise_frac),
-  .fall_frac(fall_frac),
-
-  .t_trailing_edge(t_trailing_edge),
-  .t_leading_edge(t_leading_edge_in),
-  .data_valid(data_valid_in)
+  .t_trailing_edge          (t_trailing_edge),
+  .t_leading_edge           (t_leading_edge_in),
+  .master_timestamp_fall_out(master_timestamp_fall3),
+  .master_timestamp_rise_out(master_timestamp_rise3),
+  .data_valid               (data_valid_in)
 );
 
 
@@ -175,8 +185,8 @@ u_output_sum (
 
   .data_valid_in     (data_valid_in),
   .data_valid_out    (data_valid_out),
-  .master_timestamp_rise(master_timestamp_rise),
-  .master_timestamp_fall(master_timestamp_fall),
+  .master_timestamp_rise(master_timestamp_rise3),
+  .master_timestamp_fall(master_timestamp_fall3),
   .t_leading_edge_in (t_leading_edge_in),
   .t_leading_edge_out(t_leading_edge_out), //Picosecond master timestamp
   .t_trailing_edge_in(t_trailing_edge),
