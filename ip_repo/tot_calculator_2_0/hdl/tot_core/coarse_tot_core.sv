@@ -150,6 +150,10 @@ always_comb begin
 
     current_sample  = adc_samples_q[i];
     previous_sample = (i==0) ? adc_samples_2q[SAMPLE_NUM_PER_CYCLE-1] : adc_samples_q[i-1];
+    // if (i==0) begin
+    //   // $display("previous_sample = %0d, current_sample = %0d", previous_sample, current_sample);
+    // end
+    
 
     // --- Rising edge ---
     if ((previous_sample < thr[11:0]) && (current_sample >= thr[11:0])) begin
