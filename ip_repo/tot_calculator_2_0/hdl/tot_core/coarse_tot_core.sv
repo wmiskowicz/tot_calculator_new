@@ -21,12 +21,9 @@ module coarse_tot_core #(
 
   output logic [WIDTH-1:0] rise_coarse_time,
   output logic [WIDTH-1:0] fall_coarse_time,
-  output logic [31:0]       master_timestamp_rise,
-  output logic [31:0]       master_timestamp_fall
+  output logic [63:0]       master_timestamp_rise,
+  output logic [63:0]       master_timestamp_fall
 );
-
-// ----- Local parameters -----
-
 
 // ----- Typedefs -----
 typedef logic [SAMPLE_NUM_PER_CYCLE-1:0][11:0] adc_sample_vector_t;
@@ -48,8 +45,13 @@ logic fall_detected_nxt, fall_detected_q, fall_detected_2q;
 logic [WIDTH-1:0] rise_coarse_time_nxt, rise_coarse_time_q, rise_coarse_time_2q;
 logic [WIDTH-1:0] fall_coarse_time_nxt, fall_coarse_time_q, fall_coarse_time_2q;
 
-logic [31:0] master_timestamp_40mhz;
+// ----- Master timestamp counters -----
+logic [63:0] master_timestamp_40mhz;
+logic [63:0] master_timestamp_160mhz;
+logic [63:0] master_timestamp_160mhz_q, master_timestamp_160mhz_2q;
 
+
+// ----- Module logic ------
 
 always_ff @(posedge clk or negedge rst_n) begin
   if (!rst_n) begin
@@ -162,7 +164,7 @@ always_comb begin
       rise_prev_sample_nxt = previous_sample;
       rise_coarse_time_nxt = (sampl_clk_ctr + i); // In sampling clk cycles
       pulse_active_nxt     = 1'b1;
-      $display("Rise found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
+      // $display("Rise found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
     end
 
     // --- Falling edge ---
@@ -171,7 +173,7 @@ always_comb begin
       fall_curr_sample_nxt = current_sample;
       fall_prev_sample_nxt = previous_sample;
       fall_coarse_time_nxt = (sampl_clk_ctr + i); // In sampling clk cycles
-      $display("Fall found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
+      // $display("Fall found at i = %0d, sampl_clk_ctr=%0d, master_timestamp = %0d", i, sampl_clk_ctr, master_timestamp_40mhz); 
       pulse_active_nxt     = 1'b0;
     end
 
@@ -183,24 +185,24 @@ end
 
 always_ff @(posedge clk_timestamp or negedge rst_n_40MHz) begin
   if (!rst_n_40MHz) begin
-    master_timestamp_40mhz <= 32'd0;
+    master_timestamp_40mhz <= 64'd0;
   end 
   else begin
-    master_timestamp_40mhz <= master_timestamp_40mhz + 32'd1;
+    master_timestamp_40mhz <= master_timestamp_40mhz + 64'd1;
   end
 end
 
 // ----- Cross clock -----
 // to add xdc_cdc type in tcl console: 
 // set_property XPM_LIBRARIES {XPM_CDC} [current_project]
-logic [31:0] master_timestamp_160mhz;
+
 
 xpm_cdc_array_single #(
   .DEST_SYNC_FF(2),
   .INIT_SYNC_FF(0),   
   .SIM_ASSERT_CHK(0), 
   .SRC_INPUT_REG(1),
-  .WIDTH(32)
+  .WIDTH(64)
 ) xpm_cdc_timestamp_inst (
   .src_clk(clk_timestamp),
   .src_in(master_timestamp_40mhz),
@@ -208,15 +210,27 @@ xpm_cdc_array_single #(
   .dest_out(master_timestamp_160mhz)
 );
 
+// xpm_cdc_gray #(
+//   .DEST_SYNC_FF(2),
+//   .INIT_SYNC_FF(0),
+//   .REG_OUTPUT(1),
+//   .SIM_ASSERT_CHK(0),
+//   .WIDTH(64)
+// ) xpm_cdc_timestamp_inst (
+//   .src_clk(clk_timestamp),
+//   .src_in(master_timestamp_40mhz),
+//   .dest_clk(clk),
+//   .dest_out(master_timestamp_160mhz)
+// );
+
 
 // ----- Timestamp in 160MHz -----
-logic [31:0 ] master_timestamp_160mhz_q, master_timestamp_160mhz_2q;
 always_ff @(posedge clk) begin
   if (!rst_n) begin
-    master_timestamp_rise <= 32'd0;
-    master_timestamp_fall <= 32'd0;
-    master_timestamp_160mhz_q <= 32'b0;
-    master_timestamp_160mhz_2q <= 32'b0;
+    master_timestamp_rise <= 64'd0;
+    master_timestamp_fall <= 64'd0;
+    master_timestamp_160mhz_q <= 64'b0;
+    master_timestamp_160mhz_2q <= 64'b0;
   end 
   else begin
     master_timestamp_160mhz_q <= master_timestamp_160mhz;

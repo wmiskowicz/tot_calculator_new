@@ -10,7 +10,7 @@ axi_master_t axi_master = new();
 
 // ----- Local parameters -----
 parameter SAMPLE_NUM_PER_CYCLE = 24;
-parameter SAMPLING_CLK_PERIOD_PS = 16'd260;
+parameter SAMPLING_CLK_PERIOD_PS = 16'd263;
 parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000; // 40 MHz
 parameter WIDTH = 32;
 parameter FRAC = 8;
@@ -286,17 +286,24 @@ always_ff @(posedge clk_sample) begin
   end
 end
 
-always @(posedge dut.tot_calculator_v1_5_S00_AXI_inst.u_tot_core_top.data_valid) begin
-  $display("--------------------------------------------------------");
-  $display("Sim leading edge = %0d to %0d", rise_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  rise_time_sim-start_time);
-  $display("Sim trailing edge = %0d to %0d", fall_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  fall_time_sim-start_time);
-  $display("Sim tot edge = %0d to %0d ", tot_sim - SAMPLING_CLK_PERIOD_PS,  tot_sim + SAMPLING_CLK_PERIOD_PS);
-  $display("--------------------------------------------------------");
+time timestamp_queue [$];
+
+always @(posedge clk_sample) begin
+  if (adc_data_peek < thr && adc_data_q >= thr) begin
+    $display("Sim leading edge = %0dns to %0dns", (rise_time_sim-start_time - SAMPLING_CLK_PERIOD_PS)/1000, ( rise_time_sim-start_time)/1000);
+    timestamp_queue.push_back(rise_time_sim-start_time - SAMPLING_CLK_PERIOD_PS);
+  end
+  
+  // $display("--------------------------------------------------------");
+  // $display("Sim trailing edge = %0d to %0d", fall_time_sim-start_time - SAMPLING_CLK_PERIOD_PS,  fall_time_sim-start_time);
+  // $display("Sim tot edge = %0d to %0d ", tot_sim - SAMPLING_CLK_PERIOD_PS,  tot_sim + SAMPLING_CLK_PERIOD_PS);
+  // $display("--------------------------------------------------------");
 end
 
 // ============================================================
 // Main stimulus
 // ============================================================
+time time_sim, error1, error2;
 initial begin
   axi_master.init(BFM_AXI.IF, "axi_master");
   tot = '0;
@@ -318,11 +325,15 @@ initial begin
   #200ns;
   wait_clk_cycles(400);
 
-    repeat(6) begin
+    repeat(12) begin
       axi_master.read(TOT_RES_ADDR, tot, 32);
       axi_master.read(T_LEAD_RES_LO_ADDR, t_lead[31:0], 32);
       axi_master.read(T_LEAD_RES_HI_ADDR, t_lead[63:32], 32);
-      $display("Leading edge = %0dps | ToT = %0dps", $unsigned(t_lead), $unsigned(tot));
+      // $display("Leading edge = %0dns | ToT = %0dps", $unsigned(t_lead/1000), $unsigned(tot));
+      time_sim = timestamp_queue.pop_front();
+      error1 = (t_lead - time_sim);
+      error2 = (time_sim - t_lead);
+      $display("Meas edge = %0dps | Sim edge = %0dps, error = %0dps", $unsigned(t_lead), $unsigned(time_sim), min(error2, error1));
     end
 
   $finish;
@@ -331,7 +342,7 @@ end
 
 
 adc_csv_streamer #(
-  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output2.csv"),
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output3.csv"),
   .V_MIN   (V_MIN),
   .V_MAX   (V_MAX)
 )
@@ -343,7 +354,7 @@ u_adc_csv_streamer (
 );
 
 adc_csv_streamer2 #(
-  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output2.csv"),
+  .CSV_FILE("C:/AGH_archive/Semestr_MI/SDUP/Project/tot_final_sim/sim/python/data/shaper_output3.csv"),
   .V_MIN   (V_MIN),
   .V_MAX   (V_MAX),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE)
@@ -365,5 +376,9 @@ task automatic wait_clk_cycles (input int clk_num);
   end
 endtask
 
+function automatic logic [63:0] min (input logic [63:0] val1, input logic [63:0] val2);
+    // If the number is negative, invert it and add 1 (two's complement)
+    return (val1 < val2) ? val1 : val2;
+endfunction
 
 endmodule

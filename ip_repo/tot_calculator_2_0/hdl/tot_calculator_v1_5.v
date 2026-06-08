@@ -22,7 +22,7 @@
 module tot_calculator_v1_5 #
 (
 	// ToT calculator parameters
-  parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+  parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd263, // 3.8GHz
   parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
 	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,

@@ -11,11 +11,11 @@ module interp_exp #(
   input wire [11:0] curr_sample,
   input wire sample_valid_in,
   input wire [31:0] event_time_in,
-  input wire [31:0] master_timestamp_in,
+  input wire [63:0] master_timestamp_in,
   input wire [11:0] thr,
 
   output logic [31:0] event_time_out,
-  output logic [31:0] master_timestamp_out,
+  output logic [63:0] master_timestamp_out,
   output logic sample_valid_out,
   output logic [FRAC-1:0] frac
 );
@@ -77,7 +77,7 @@ always_ff @(posedge clk) begin
   end
   else begin
     if (IS_FALLING) begin
-      numerator   <= log2_lut(thr) - log2_lut(curr_sample);
+      numerator   <= log2_lut(thr) - log2_lut(curr_sample_q);
       denominator <= log2_lut(prev_sample_q) - log2_lut(curr_sample_q);
     end
     else begin
@@ -125,7 +125,7 @@ fifo_generator_0 fifo_coarse (
 	.wr_rst_busy()
 );
 
-fifo_generator_0 fifo_timestamp (
+fifo_timestamp fifo_timestamp (
 	.clk        (clk),
 	.srst       (rst),
 

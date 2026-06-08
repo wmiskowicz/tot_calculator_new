@@ -1,8 +1,8 @@
 module tot_core_top #(
-  parameter SAMPLE_NUM_PER_CYCLE = 1,
+  parameter SAMPLE_NUM_PER_CYCLE = 24,
   parameter WIDTH = 32,
   parameter FRAC = 8,
-  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+  parameter bit [15:0] SAMPLING_CLK_PERIOD_PS = 16'd263,
   parameter bit [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000 // 40 MHz timestamp clock
 )(
   input wire clk,
@@ -19,6 +19,12 @@ module tot_core_top #(
   output logic data_valid
 );
 
+// ----- Local parameters -----
+localparam int CLK_PERIOD_PS = 6250; //160MHz
+
+// This is range of sample_ctr that counts time inside every 40 MHz clock cycle
+localparam int TIMESTAMP_TO_OP_CLK_FACTOR = (TIMESTAMP_CLK_PERIOD_PS / CLK_PERIOD_PS) * SAMPLE_NUM_PER_CYCLE;
+
 // ============================================================
 // Internal signals
 // ============================================================
@@ -31,8 +37,8 @@ wire [WIDTH-1:0] tot_out;
 
 wire [WIDTH-1:0] t_leading_edge_in;
 wire [63:0] t_leading_edge_out;
-wire [31:0] master_timestamp_rise1, master_timestamp_rise2, master_timestamp_rise3; 
-wire [31:0] master_timestamp_fall1, master_timestamp_fall2, master_timestamp_fall3; 
+wire [63:0] master_timestamp_rise1, master_timestamp_rise2, master_timestamp_rise3; 
+wire [63:0] master_timestamp_fall1, master_timestamp_fall2, master_timestamp_fall3; 
 
 // Edge detection
 
@@ -104,6 +110,7 @@ u_coarse_tot_core
 
 interp_exp #(
   .FRAC(FRAC),
+  .TIMESTAMP_TO_OP_CLK_FACTOR(TIMESTAMP_TO_OP_CLK_FACTOR),
   .IS_FALLING(0)
 )
 u_rising_interp_exp
@@ -126,6 +133,7 @@ u_rising_interp_exp
 
 interp_exp #(
   .FRAC(FRAC),
+  .TIMESTAMP_TO_OP_CLK_FACTOR(TIMESTAMP_TO_OP_CLK_FACTOR),
   .IS_FALLING(1)
 )
 u_falling_interp_exp
@@ -176,6 +184,7 @@ u_tot_final_accumulator
 output_sum #(
   .PORTS_WIDTH(WIDTH),
   .SAMPLE_NUM_PER_CYCLE(SAMPLE_NUM_PER_CYCLE),
+  .TIMESTAMP_TO_OP_CLK_FACTOR(TIMESTAMP_TO_OP_CLK_FACTOR),
   .SAMPLING_CLK_PERIOD_PS(SAMPLING_CLK_PERIOD_PS),
   .TIMESTAMP_CLK_PERIOD_PS(TIMESTAMP_CLK_PERIOD_PS)
 )

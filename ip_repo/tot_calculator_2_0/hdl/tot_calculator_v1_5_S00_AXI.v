@@ -3,7 +3,7 @@
 
 module tot_calculator_v1_5_S00_AXI #
 (
-	parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd416, // 1.6 GHz sampling clock
+	parameter [15:0] SAMPLING_CLK_PERIOD_PS = 16'd263, // 1.6 GHz sampling clock
 	parameter [31:0] TIMESTAMP_CLK_PERIOD_PS = 32'd25_000, // 40 MHz timestamp clock
 	parameter SAMPLE_NUM_PER_CYCLE = 24,
 	parameter WIDTH = 32,
@@ -397,71 +397,11 @@ u_tot_core_top (
 
 	.thr           (thr_in),
 	.sample        (sample_q),
-	// .sample        (sample),
 
 	.data_valid    (data_valid),
 	.t_leading_edge(t_leading_edge),
 	.tot           (tot)
 );
-
-reg [15:0] sample_ctr;
-assign slv_reg4 = sample_ctr;
-
-always @(posedge S_AXI_ACLK) begin
-	if (~S_AXI_ARESETN) begin
-		sample_q <= 288'd0;
-		sample_ctr <= 16'd0;
-	end
-	else if (sample_valid) begin
-		sample_q <= sample;
-		sample_ctr <= sample_ctr + 16'd1;
-	end
-	else begin
-		sample_q <= 288'd0;
-	end
-end
-
-
-reg [11:0] sample_max;
-reg [11:0] current_cycle_max;
-integer i;
-
-always @(*) begin
-	current_cycle_max = sample[11:0];
-
-	for (i = 1; i < 24; i=i+1) begin
-		if (sample[i*12 +: 12] > current_cycle_max) begin
-			current_cycle_max = sample[i*12 +: 12];
-		end
-	end
-end
-
-always @(posedge S_AXI_ACLK) begin
-	if (~S_AXI_ARESETN) begin
-		sample_max <= 12'd0;
-	end
-	else if (sample_valid) begin
-		if (current_cycle_max > sample_max) begin
-			sample_max <= current_cycle_max;
-		end
-	end
-end
-
-assign slv_reg6 = sample_max;
-assign slv_reg5 = tot;
-
-reg [7:0] araddr_q;
-reg rvalid_q;
-always @(posedge S_AXI_ACLK) begin
-	if (~S_AXI_ARESETN) begin
-		araddr_q <= 8'b0;
-	end
-	else if (S_AXI_ARVALID) begin
-		araddr_q <= S_AXI_ARADDR;
-	end
-
-	rvalid_q <= axi_rvalid;
-end
 
 // ----- FIFO -----
 wire wr_en;
@@ -472,6 +412,10 @@ wire [WIDTH-1:0] t_leading_reg_hi;
 wire [WIDTH-1:0] t_leading_reg_low;
 wire full1, full2, full3;
 wire empty1, empty2, empty3;
+reg [7:0] araddr_q;
+reg rvalid_q;
+reg [31:0] sample_ctr;
+
 
 assign scaled_addr = araddr_q[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB];
 assign wr_en = data_valid && !(full1 || full2 || full3);
@@ -525,5 +469,37 @@ fifo_axi fifo_t_leading_hi (
 	.wr_en      (wr_en),
 	.wr_rst_busy()
 );
+
+
+// ----- Debug registers -----
+assign slv_reg4 = sample_ctr;
+
+always @(posedge S_AXI_ACLK) begin
+	if (~S_AXI_ARESETN) begin
+		sample_q <= 288'd0;
+		sample_ctr <= 32'd0;
+	end
+	else if (sample_valid) begin
+		sample_q <= sample;
+		sample_ctr <= sample_ctr + 32'd1;
+	end
+	else begin
+		sample_q <= 288'd0;
+	end
+end
+
+
+assign slv_reg5 = tot;
+
+always @(posedge S_AXI_ACLK) begin
+	if (~S_AXI_ARESETN) begin
+		araddr_q <= 8'b0;
+	end
+	else if (S_AXI_ARVALID) begin
+		araddr_q <= S_AXI_ARADDR;
+	end
+
+	rvalid_q <= axi_rvalid;
+end
 
 endmodule

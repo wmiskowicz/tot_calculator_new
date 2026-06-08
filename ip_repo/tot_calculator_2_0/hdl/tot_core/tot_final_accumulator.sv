@@ -8,8 +8,8 @@ module tot_final_accumulator #(
   input wire rise_valid,
   input wire fall_valid,
 
-  input wire [WIDTH-1:0] master_timestamp_rise_in,
-  input wire [WIDTH-1:0] master_timestamp_fall_in,
+  input wire [63:0] master_timestamp_rise_in,
+  input wire [63:0] master_timestamp_fall_in,
 
   input wire [WIDTH-1:0] rise_coarse_time,
   input wire [WIDTH-1:0] fall_coarse_time,
@@ -20,15 +20,15 @@ module tot_final_accumulator #(
   output logic [WIDTH-1:0] t_trailing_edge,
   output logic [WIDTH-1:0] t_leading_edge,
 
-  output logic [WIDTH-1:0] master_timestamp_rise_out,
-  output logic [WIDTH-1:0] master_timestamp_fall_out,
+  output logic [63:0] master_timestamp_rise_out,
+  output logic [63:0] master_timestamp_fall_out,
 
   output logic data_valid
 );
 
 logic [WIDTH-1:0] t_rising_q, t_rising_2q;
-logic [WIDTH-1:0] master_timestamp_rise_q, master_timestamp_rise_2q;
-logic [WIDTH-1:0] master_timestamp_fall_q, master_timestamp_fall_2q;
+logic [63:0] master_timestamp_rise_q, master_timestamp_rise_2q;
+logic [63:0] master_timestamp_fall_q, master_timestamp_fall_2q;
 logic [WIDTH-1:0] t_falling_q, t_falling_2q;
 
 
