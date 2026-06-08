@@ -62,11 +62,11 @@ always_ff @(posedge clk_data) begin
 
 
     t_leading_edge_q <= 64'(t_leading_edge_in * SAMPLING_CLK_PERIOD_PS);
-    t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + 64'(master_timestamp_rise_q * TIMESTAMP_CLK_PERIOD_PS);
+    t_leading_edge_2q <= (t_leading_edge_q >> FRAC) + 64'(master_timestamp_rise_q * (TIMESTAMP_CLK_PERIOD_PS / 2));
     master_timestamp_rise_q <= master_timestamp_rise; 
 
     
-    t_trailing_edge_2q <= (t_trailing_edge_q >> FRAC) + 64'(master_timestamp_fall_q * TIMESTAMP_CLK_PERIOD_PS); 
+    t_trailing_edge_2q <= (t_trailing_edge_q >> FRAC) + 64'(master_timestamp_fall_q * (TIMESTAMP_CLK_PERIOD_PS / 2)); 
 
     tot_q <= t_trailing_edge_2q - t_leading_edge_2q;
     

@@ -313,7 +313,7 @@ initial begin
   rst_n = 1'b0;
   thr = 12'h7FF;
 
-  wait_clk_cycles(10);
+  #10ns;
   rst_n = 1'b1;
   start_time = $time();
   wait_clk_cycles(10);

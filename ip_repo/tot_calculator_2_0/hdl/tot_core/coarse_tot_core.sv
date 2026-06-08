@@ -47,8 +47,8 @@ logic [WIDTH-1:0] fall_coarse_time_nxt, fall_coarse_time_q, fall_coarse_time_2q;
 
 // ----- Master timestamp counters -----
 logic [63:0] master_timestamp_40mhz;
-logic [63:0] master_timestamp_160mhz;
-logic [63:0] master_timestamp_160mhz_q, master_timestamp_160mhz_2q;
+logic [63:0] master_timestamp_160mhz, master_timestamp_160mhz_q;
+logic [63:0] master_timestamp_160mhz_2q;
 
 
 // ----- Module logic ------
